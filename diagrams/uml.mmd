@@ -16,6 +16,7 @@ classDiagram
         +list~Task~ tasks
         +add_task(task: Task) None
         +remove_task(description: str) bool
+        +complete_task(description: str, on: date) Task
     }
 
     class Task {
@@ -26,16 +27,23 @@ classDiagram
         +str frequency
         +str pet_name
         +bool completed
+        +date due_date
         +priority_value() int
-        +mark_complete() None
+        +start_minutes() int
+        +mark_complete(on: date) Task
     }
 
     class Scheduler {
         +Owner owner
         +list~Task~ plan
         +list~Task~ skipped
+        +list~str~ conflicts
         +sort_by_priority(tasks: list~Task~) list~Task~
-        +generate_plan() list~Task~
+        +sort_by_time(tasks: list~Task~) list~Task~
+        +filter_tasks(pet_name: str, completed: bool) list~Task~
+        +mark_task_complete(task: Task, on: date) Task
+        +detect_conflicts(tasks: list~Task~) list~str~
+        +generate_plan(on: date) list~Task~
         +explain_plan() str
     }
 

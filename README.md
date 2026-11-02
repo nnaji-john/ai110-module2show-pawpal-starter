@@ -55,28 +55,67 @@ pip install -r requirements.txt
 
 ## 🖥️ Sample Output
 
-Output from running `python main.py` (one owner with 90 minutes, two pets, five tasks):
+Output from running `python main.py` (one owner with 90 minutes, two pets, five tasks; Luna's medication is set to overlap Mochi's walk on purpose):
 
 ```
-====================================================
+All tasks in the order they were added:
+  Time   Task            Pet       Min  Priority Due
+  --------------------------------------------------------
+  08:00  Breakfast       Mochi      10  high     2026-11-01
+  07:30  Morning walk    Mochi      30  high     2026-11-01
+  16:00  Grooming        Mochi      45  low      2026-11-01
+  18:00  Play session    Luna       20  medium   2026-11-01
+  07:45  Medication      Luna        5  high     2026-11-01
+
+All tasks sorted by time:
+  Time   Task            Pet       Min  Priority Due
+  --------------------------------------------------------
+  07:30  Morning walk    Mochi      30  high     2026-11-01
+  07:45  Medication      Luna        5  high     2026-11-01
+  08:00  Breakfast       Mochi      10  high     2026-11-01
+  16:00  Grooming        Mochi      45  low      2026-11-01
+  18:00  Play session    Luna       20  medium   2026-11-01
+
+==========================================================
   Today's Schedule for Jordan
-====================================================
-  Time   Task            Pet       Min  Priority
-  ------------------------------------------------
-  07:30  Morning walk    Mochi      30  high
-  08:00  Breakfast       Mochi      10  high
-  09:00  Medication      Luna        5  high
-  18:00  Play session    Luna       20  medium
-  ------------------------------------------------
-  65 of 90 minutes scheduled
+==========================================================
+  Time   Task            Pet       Min  Priority Due
+  --------------------------------------------------------
+  07:30  Morning walk    Mochi      30  high     2026-11-01
+  07:45  Medication      Luna        5  high     2026-11-01
+  08:00  Breakfast       Mochi      10  high     2026-11-01
+  18:00  Play session    Luna       20  medium   2026-11-01
 
 Plan for Jordan (65 of 90 minutes used):
   1. Morning walk for Mochi at 07:30 (30 min) [high] - scheduled in priority order and fits in the time left.
-  2. Breakfast for Mochi at 08:00 (10 min) [high] - scheduled in priority order and fits in the time left.
-  3. Medication for Luna at 09:00 (5 min) [high] - scheduled in priority order and fits in the time left.
+  2. Medication for Luna at 07:45 (5 min) [high] - scheduled in priority order and fits in the time left.
+  3. Breakfast for Mochi at 08:00 (10 min) [high] - scheduled in priority order and fits in the time left.
   4. Play session for Luna at 18:00 (20 min) [medium] - scheduled in priority order and fits in the time left.
 Skipped:
   - Grooming for Mochi (45 min) [low] - not enough time left after higher-priority tasks.
+Warnings:
+  ! Medication for Luna at 07:45 overlaps Morning walk for Mochi (07:30, 30 min).
+
+Luna's tasks only:
+  Time   Task            Pet       Min  Priority Due
+  --------------------------------------------------------
+  07:45  Medication      Luna        5  high     2026-11-01
+  18:00  Play session    Luna       20  medium   2026-11-01
+
+Completed Morning walk; next one is due 2026-11-02.
+Pending tasks after completing the walk:
+  Time   Task            Pet       Min  Priority Due
+  --------------------------------------------------------
+  07:30  Morning walk    Mochi      30  high     2026-11-02
+  07:45  Medication      Luna        5  high     2026-11-01
+  08:00  Breakfast       Mochi      10  high     2026-11-01
+  16:00  Grooming        Mochi      45  low      2026-11-01
+  18:00  Play session    Luna       20  medium   2026-11-01
+
+Completed tasks:
+  Time   Task            Pet       Min  Priority Due
+  --------------------------------------------------------
+  07:30  Morning walk    Mochi      30  high     2026-11-01
 ```
 
 ## 🧪 Testing PawPal+
@@ -92,19 +131,19 @@ pytest --cov
 Sample test output:
 
 ```
-# Paste your pytest output here
+collected 16 items
+tests\test_pawpal.py ................                                    [100%]
+============================= 16 passed in 0.09s ==============================
 ```
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Task sorting | `Scheduler.sort_by_priority()`, `Scheduler.sort_by_time()` | The plan is chosen by priority (then preferred time, then shortest first). `sort_by_time()` uses `sorted()` with a lambda key on the `HH:MM` string (times are zero-padded when a task is created, so `7:30` becomes `07:30` and string order is time order), with untimed tasks last. |
+| Filtering | `Scheduler.filter_tasks(pet_name, completed)`, `Scheduler.generate_plan(on)` | Filter by pet, by completion status, or both. The plan only includes pending tasks due by that day, and tasks that don't fit in the owner's remaining time are skipped. |
+| Conflict handling | `Scheduler.detect_conflicts()` | Sorts timed tasks by start and flags any task that starts before an earlier one has ended. Tasks that only touch (08:00 end, 08:00 start) are fine. Conflicts are **warnings only**: both tasks stay in the plan and the owner decides. |
+| Recurring tasks | `Task.mark_complete()`, `Scheduler.mark_task_complete()`, `Pet.complete_task()` | Completing a `daily` task adds a new copy to the same pet due one day later (`timedelta(days=1)`); `weekly` adds 7 days, and `once` doesn't repeat. The next date counts from the later of the old due date and today, so an overdue task doesn't come back already overdue and an early completion doesn't shift the schedule. |
 
 ## 📸 Demo Walkthrough
 
