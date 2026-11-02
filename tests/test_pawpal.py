@@ -209,3 +209,225 @@ def test_conflicts_do_not_crash_explain_plan():
 
     assert "Warnings:" in text
     assert len(scheduler.plan) == 2
+
+
+# --- Building the plan ---
+
+
+def test_high_priority_wins_when_time_is_short():
+    owner, mochi, _ = make_owner(minutes=30)
+    mochi.add_task(Task("Grooming", 30, "low"))
+    mochi.add_task(Task("Walk", 30, "high"))
+
+    scheduler = Scheduler(owner)
+    scheduler.generate_plan()
+
+    assert [t.description for t in scheduler.plan] == ["Walk"]
+    assert [t.description for t in scheduler.skipped] == ["Grooming"]
+
+
+def test_skipped_task_does_not_block_smaller_later_tasks():
+    owner, mochi, _ = make_owner(minutes=40)
+    mochi.add_task(Task("Walk", 30, "high"))
+    mochi.add_task(Task("Bath", 20, "medium"))  # only 10 min left, so skipped
+    mochi.add_task(Task("Brush", 10, "low"))  # still fits after the bath is skipped
+
+    scheduler = Scheduler(owner)
+    scheduler.generate_plan()
+
+    assert [t.description for t in scheduler.plan] == ["Walk", "Brush"]
+    assert [t.description for t in scheduler.skipped] == ["Bath"]
+
+
+def test_task_that_exactly_fills_remaining_time_is_kept():
+    owner, mochi, _ = make_owner(minutes=30)
+    mochi.add_task(Task("Walk", 30, "high"))
+
+    assert len(Scheduler(owner).generate_plan()) == 1
+
+
+def test_owner_with_no_pets_gets_empty_plan():
+    owner = Owner("Jordan", available_minutes=60)
+    scheduler = Scheduler(owner)
+
+    assert scheduler.generate_plan() == []
+    assert scheduler.conflicts == []
+    assert "No pending tasks" in scheduler.explain_plan()
+
+
+def test_pet_with_no_tasks_does_not_affect_plan():
+    owner, mochi, _ = make_owner()  # Luna has no tasks
+    mochi.add_task(Task("Walk", 30, "high"))
+
+    assert [t.pet_name for t in Scheduler(owner).generate_plan()] == ["Mochi"]
+
+
+def test_every_task_too_long_means_empty_plan():
+    owner, mochi, _ = make_owner(minutes=10)
+    mochi.add_task(Task("Hike", 120, "high"))
+
+    scheduler = Scheduler(owner)
+
+    assert scheduler.generate_plan() == []
+    assert len(scheduler.skipped) == 1
+
+
+def test_completed_tasks_are_left_out_of_plan():
+    owner, mochi, _ = make_owner()
+    done = Task("Breakfast", 10, "high", frequency="once")
+    mochi.add_task(done)
+    mochi.add_task(Task("Walk", 30, "high"))
+    done.mark_complete()
+
+    assert [t.description for t in Scheduler(owner).generate_plan()] == ["Walk"]
+
+
+def test_generating_twice_does_not_duplicate_tasks():
+    owner, mochi, _ = make_owner(minutes=20)
+    mochi.add_task(Task("Walk", 15, "high"))
+    mochi.add_task(Task("Hike", 120, "low"))
+
+    scheduler = Scheduler(owner)
+    scheduler.generate_plan()
+    scheduler.generate_plan()
+
+    assert len(scheduler.plan) == 1
+    assert len(scheduler.skipped) == 1
+
+
+def test_overdue_tasks_are_included_in_plan():
+    today = date(2026, 11, 1)
+    owner, mochi, _ = make_owner()
+    mochi.add_task(Task("Meds", 5, "high", due_date=today - timedelta(days=3)))
+
+    assert len(Scheduler(owner).generate_plan(on=today)) == 1
+
+
+# --- Sorting ---
+
+
+def test_sort_by_time_keeps_added_order_for_same_time():
+    owner, mochi, luna = make_owner()
+    mochi.add_task(Task("Breakfast", 10, "high", time="08:00"))
+    luna.add_task(Task("Breakfast", 5, "high", time="08:00"))
+
+    ordered = Scheduler(owner).sort_by_time(owner.get_all_tasks())
+
+    assert [t.pet_name for t in ordered] == ["Mochi", "Luna"]
+
+
+def test_sort_by_time_handles_empty_list_and_does_not_change_input():
+    owner, mochi, _ = make_owner()
+    scheduler = Scheduler(owner)
+    assert scheduler.sort_by_time([]) == []
+
+    mochi.add_task(Task("Dinner", 10, "high", time="18:00"))
+    mochi.add_task(Task("Walk", 30, "high", time="07:30"))
+    original = list(mochi.tasks)
+    scheduler.sort_by_time(mochi.tasks)
+
+    assert mochi.tasks == original
+
+
+# --- Recurring tasks ---
+
+
+@pytest.mark.parametrize(
+    "due, expected",
+    [
+        (date(2026, 1, 31), date(2026, 2, 1)),  # end of month
+        (date(2026, 12, 31), date(2027, 1, 1)),  # end of year
+        (date(2028, 2, 28), date(2028, 2, 29)),  # leap year
+    ],
+)
+def test_daily_task_rolls_over_month_year_and_leap_day(due, expected):
+    walk = Task("Walk", 30, "high", due_date=due)
+
+    assert walk.mark_complete(on=due).due_date == expected
+
+
+def test_next_occurrence_copies_the_task_details():
+    today = date(2026, 11, 1)
+    walk = Task("Walk", 30, "high", time="07:30", due_date=today)
+
+    next_walk = walk.mark_complete(on=today)
+
+    assert (next_walk.description, next_walk.duration_minutes, next_walk.priority, next_walk.time) == (
+        "Walk", 30, "high", "07:30",
+    )
+    assert next_walk is not walk
+
+
+def test_complete_task_picks_earliest_pending_copy():
+    today = date(2026, 11, 1)
+    pet = Pet("Mochi", "dog")
+    pet.add_task(Task("Walk", 30, "high", due_date=today + timedelta(days=1)))
+    pet.add_task(Task("Walk", 30, "high", due_date=today))
+
+    pet.complete_task("Walk", on=today)
+
+    assert pet.tasks[1].completed is True  # the one due today
+    assert pet.tasks[0].completed is False
+
+
+def test_completing_unknown_task_raises():
+    pet = Pet("Mochi", "dog")
+
+    with pytest.raises(ValueError):
+        pet.complete_task("Walk")
+
+
+# --- Conflict detection ---
+
+
+def test_three_tasks_at_same_time_give_one_warning_per_pair():
+    owner, mochi, luna = make_owner()
+    mochi.add_task(Task("Breakfast", 10, "high", time="08:00"))
+    mochi.add_task(Task("Meds", 5, "high", time="08:00"))
+    luna.add_task(Task("Breakfast", 5, "high", time="08:00"))
+
+    warnings = Scheduler(owner).detect_conflicts(owner.get_all_tasks())
+
+    assert len(warnings) == 3
+    assert all("same time" in w for w in warnings)
+
+
+def test_no_tasks_or_one_task_has_no_conflicts():
+    owner, _, _ = make_owner()
+    scheduler = Scheduler(owner)
+
+    assert scheduler.detect_conflicts([]) == []
+    assert scheduler.detect_conflicts([Task("Walk", 30, "high", time="07:30")]) == []
+
+
+# --- Filtering and input checks ---
+
+
+def test_filter_by_unknown_pet_is_empty():
+    owner, mochi, _ = make_owner()
+    mochi.add_task(Task("Walk", 30, "high"))
+
+    assert Scheduler(owner).filter_tasks(pet_name="Rex") == []
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"priority": "urgent"},
+        {"frequency": "monthly"},
+        {"duration_minutes": 0},
+        {"time": "24:00"},
+        {"time": "12:60"},
+    ],
+)
+def test_invalid_task_fields_are_rejected(kwargs):
+    fields = {"description": "Walk", "duration_minutes": 30, "priority": "high"} | kwargs
+
+    with pytest.raises(ValueError):
+        Task(**fields)
+
+
+def test_priority_and_frequency_are_case_insensitive():
+    task = Task("Walk", 30, "High", frequency="Daily")
+
+    assert (task.priority, task.frequency) == ("high", "daily")

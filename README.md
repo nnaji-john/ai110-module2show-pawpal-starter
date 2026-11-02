@@ -127,21 +127,37 @@ Completed tasks:
 
 ## 🧪 Testing PawPal+
 
+Run the test suite from the project folder:
+
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
 
-Sample test output:
+The tests are in [`tests/test_pawpal.py`](tests/test_pawpal.py) and cover the scheduling logic in `pawpal_system.py`:
+
+- **Building the plan:** high-priority tasks win when time is short, a skipped task doesn't block smaller ones after it, a task that exactly fills the remaining time is kept, completed and not-yet-due tasks are left out, overdue tasks are included, and regenerating doesn't duplicate tasks. Also covers an owner with no pets, a pet with no tasks, and every task being too long.
+- **Sorting:** tasks come back in time order (including `7:30` before `10:00`), untimed tasks go last, tasks at the same time keep the order they were added, and the input list isn't changed.
+- **Recurring tasks:** completing a daily task creates the next one for the following day, weekly adds 7 days, and once doesn't repeat. Covers overdue and early completion, month-end, year-end and leap-day rollover, and adding the next copy to the right pet.
+- **Conflict detection:** flags tasks at the same time for the same pet or different pets, and partial overlaps. Back-to-back and untimed tasks are not conflicts, and conflicts never stop the plan from being built.
+- **Filtering and input checks:** filtering by pet and status, and rejecting invalid priorities, frequencies, durations, and times.
+
+Test output:
 
 ```
-collected 19 items
-tests\test_pawpal.py ...................                                 [100%]
-============================= 19 passed in 0.09s ==============================
+============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.2.0, pluggy-1.7.0
+rootdir: C:\Users\johnp\CodePath\AI110\ai110-module2show-pawpal-starter
+plugins: anyio-4.16.0
+collected 45 items
+
+tests\test_pawpal.py .............................................       [100%]
+
+============================= 45 passed in 0.15s ==============================
 ```
+
+**Confidence level: ★★★★☆ (4/5)**
+
+All 45 tests pass, including edge cases like empty owners, same-time tasks, and date rollovers. I also checked that the tests catch real bugs by breaking the code on purpose (for example, changing `<=` to `<` in the time check); each change made at least one test fail. I'm not giving 5 stars because the Streamlit UI isn't part of the automated tests (I checked it by running it), owner preferences aren't used by the scheduler yet, and the plan orders tasks rather than assigning exact start times.
 
 ## 📐 Smarter Scheduling
 
