@@ -172,3 +172,40 @@ def test_scheduler_rejects_task_from_another_owner():
 
     with pytest.raises(ValueError):
         Scheduler(owner).mark_task_complete(stray)
+
+
+def test_same_time_for_different_pets_is_flagged():
+    owner, mochi, luna = make_owner()
+    mochi.add_task(Task("Breakfast", 10, "high", time="08:00"))
+    luna.add_task(Task("Breakfast", 5, "high", time="08:00"))
+
+    scheduler = Scheduler(owner)
+    scheduler.generate_plan()
+
+    assert len(scheduler.conflicts) == 1
+    assert "same time" in scheduler.conflicts[0]
+    assert "Mochi" in scheduler.conflicts[0] and "Luna" in scheduler.conflicts[0]
+
+
+def test_same_time_for_same_pet_is_flagged():
+    owner, mochi, _ = make_owner()
+    mochi.add_task(Task("Walk", 30, "high", time="07:30"))
+    mochi.add_task(Task("Meds", 5, "high", time="07:30"))
+
+    warnings = Scheduler(owner).detect_conflicts(mochi.tasks)
+
+    assert len(warnings) == 1
+    assert "same time" in warnings[0]
+
+
+def test_conflicts_do_not_crash_explain_plan():
+    owner, mochi, luna = make_owner()
+    mochi.add_task(Task("Walk", 30, "high", time="07:30"))
+    luna.add_task(Task("Meds", 5, "high", time="07:30"))
+
+    scheduler = Scheduler(owner)
+    scheduler.generate_plan()
+    text = scheduler.explain_plan()
+
+    assert "Warnings:" in text
+    assert len(scheduler.plan) == 2

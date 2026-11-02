@@ -39,8 +39,16 @@ The review also flagged things to handle during implementation rather than in th
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+**Conflicts are warnings, not fixes.** When two timed tasks overlap (for example, Luna's 07:45 medication during Mochi's 07:30 to 08:00 walk), the scheduler keeps both tasks in the plan and adds a warning instead of moving or dropping one. This means the plan the app shows can contain two things the owner can't do at once, and the scheduler doesn't decide how to resolve it.
+
+This is reasonable for a pet owner because the right fix depends on things the app doesn't know. Giving a cat a pill takes a minute and might fit in the middle of a walk, or another person in the household might handle it. Automatically dropping the lower-priority task could hide something important, like medication, without the owner noticing. A clear warning keeps the owner in control and keeps the scheduler simple and predictable.
+
+**Readability over speed in conflict detection.** I asked my AI assistant how to simplify `detect_conflicts()`. My original version sorted the tasks and made one pass, tracking the latest end time seen so far. It was fast, but the logic was hard to follow. The assistant suggested two shorter versions:
+
+- **Compare each task only with the next one** (`itertools.pairwise`). This was the most compact, but it failed one of my tests: a two-hour hike from 09:00 overlaps both a 09:30 task and a 10:00 task, and comparing only neighbors missed the second clash.
+- **Compare every pair of tasks** (`itertools.combinations`). This passed all the tests and is much easier to read. It is slower in theory, because the work grows with the square of the number of tasks, but a pet owner has at most a few dozen tasks a day, so the difference is too small to notice.
+
+I kept the every-pair version, and wrote it as a plain loop rather than a one-line list comprehension so it stays easy to read. It also reports every clashing pair, which is more useful to the owner than my original version.
 
 ---
 

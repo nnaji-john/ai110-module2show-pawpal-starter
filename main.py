@@ -31,6 +31,7 @@ def main() -> None:
     mochi.add_task(Task("Morning walk", 30, "high", time="07:30"))
     mochi.add_task(Task("Grooming", 45, "low", time="16:00", frequency="weekly"))
     luna.add_task(Task("Medication", 5, "high", time="07:45"))  # overlaps the walk
+    luna.add_task(Task("Breakfast", 5, "high", time="08:00"))  # same time as Mochi's breakfast
 
     scheduler = Scheduler(owner)
     all_tasks = owner.get_all_tasks()

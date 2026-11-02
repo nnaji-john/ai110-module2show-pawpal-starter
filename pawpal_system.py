@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
+from itertools import combinations
 
 PRIORITY_RANK = {"low": 1, "medium": 2, "high": 3}
 REPEAT_DAYS = {"once": None, "daily": 1, "weekly": 7}
@@ -59,7 +60,20 @@ class Task:
         return time_to_minutes(self.time)
 
     def mark_complete(self, on: date | None = None) -> "Task | None":
-        """Mark this task as done on the given day (default today) and return its next occurrence."""
+        """Mark this task as done and return its next occurrence, if it repeats.
+
+        The next due date is counted from whichever is later, the current due date
+        or the completion day, plus 1 day (daily) or 7 days (weekly). That way an
+        overdue task doesn't come back already overdue, and finishing early keeps
+        the schedule.
+
+        Args:
+            on: the day the task was completed. Defaults to today.
+
+        Returns:
+            A new, pending copy of this task with the next due date, or None for
+            a "once" task. The caller adds it to the pet.
+        """
         self.completed = True
         days = REPEAT_DAYS[self.frequency]
         if days is None:
@@ -139,13 +153,30 @@ class Scheduler:
         )
 
     def sort_by_time(self, tasks: list[Task]) -> list[Task]:
-        """Return tasks in chronological order, with untimed tasks last."""
+        """Return tasks in chronological order, with untimed tasks last.
+
+        Args:
+            tasks: the tasks to sort. The list itself is not changed.
+
+        Returns:
+            A new list ordered by preferred time. Tasks with the same time keep
+            their original order.
+        """
         # Task normalizes times to zero-padded "HH:MM", so comparing the strings
         # is chronological. (t.time == "") is False for timed tasks, so they come first.
         return sorted(tasks, key=lambda t: (t.time == "", t.time))
 
     def filter_tasks(self, pet_name: str | None = None, completed: bool | None = None) -> list[Task]:
-        """Return the owner's tasks, optionally only for one pet and/or one completion status."""
+        """Return the owner's tasks across all pets, optionally filtered.
+
+        Args:
+            pet_name: only include this pet's tasks. None means every pet.
+            completed: True for completed tasks, False for pending ones,
+                None for both.
+
+        Returns:
+            The matching tasks, in pet order and then the order they were added.
+        """
         return [
             t
             for t in self.owner.get_all_tasks()
@@ -154,7 +185,18 @@ class Scheduler:
         ]
 
     def mark_task_complete(self, task: Task, on: date | None = None) -> Task | None:
-        """Complete a task and add its next occurrence (if any) to the same pet."""
+        """Complete a task and add its next occurrence (if any) to the same pet.
+
+        Args:
+            task: the exact task to complete. It must belong to one of the owner's pets.
+            on: the day it was completed. Defaults to today.
+
+        Returns:
+            The newly added next occurrence, or None if the task doesn't repeat.
+
+        Raises:
+            ValueError: if the task doesn't belong to any of the owner's pets.
+        """
         pet = next((p for p in self.owner.pets if p.name == task.pet_name), None)
         # Check identity ("is"), not equality: two separate tasks can have identical fields.
         if pet is None or not any(t is task for t in pet.tasks):
@@ -165,30 +207,51 @@ class Scheduler:
         return next_task
 
     def detect_conflicts(self, tasks: list[Task]) -> list[str]:
-        """Return a warning for each timed task that starts before an earlier task has ended."""
+        """Return a warning for every pair of timed tasks whose times overlap.
+
+        Two tasks clash if the later one starts before the earlier one ends, so
+        this catches tasks at the same time (for the same pet or different pets)
+        and partial overlaps. Tasks that only touch, like 07:30 to 08:00 and then
+        08:00, don't clash. Untimed tasks are ignored. This never raises; the
+        caller decides what to do with the warnings.
+
+        Args:
+            tasks: the tasks to check, from any number of pets.
+
+        Returns:
+            One readable warning message per clashing pair, or an empty list.
+        """
         warnings = []
         # Untimed tasks can happen whenever, so only timed tasks can clash.
         timed = self.sort_by_time([t for t in tasks if t.time])
-        latest = None  # the task seen so far that ends last
-        latest_end = -1  # when it ends, in minutes after midnight
-        for task in timed:
-            start = task.start_minutes()
-            end = start + task.duration_minutes
-            # Tasks are in start order, so this task overlaps an earlier one exactly when
-            # it starts before the latest end so far. Touching (start == end) is fine.
-            if latest is not None and start < latest_end:
+        # Check every pair. A day has few tasks, so this is fast enough and easy to follow.
+        # Because the list is sorted, `first` never starts after `second`.
+        for first, second in combinations(timed, 2):
+            first_end = first.start_minutes() + first.duration_minutes
+            # Touching (second starts exactly when first ends) is not a conflict.
+            if second.start_minutes() < first_end:
+                clash = "is at the same time as" if second.time == first.time else "overlaps"
                 warnings.append(
-                    f"{task.description} for {task.pet_name} at {task.time} overlaps "
-                    f"{latest.description} for {latest.pet_name} "
-                    f"({latest.time}, {latest.duration_minutes} min)."
+                    f"{second.description} for {second.pet_name} at {second.time} {clash} "
+                    f"{first.description} for {first.pet_name} "
+                    f"({first.time}, {first.duration_minutes} min)."
                 )
-            # Track the furthest end, so one long task is checked against every task inside it.
-            if end > latest_end:
-                latest, latest_end = task, end
         return warnings
 
     def generate_plan(self, on: date | None = None) -> list[Task]:
-        """Choose and order tasks due by the given day (default today) that fit in the owner's time."""
+        """Choose and order the tasks to do on a given day.
+
+        Takes every pending task due on or before that day, goes through them
+        in priority order, and keeps each one that still fits in the owner's
+        available minutes. Tasks that don't fit go to self.skipped, and any time
+        clashes in the plan are saved as warnings in self.conflicts.
+
+        Args:
+            on: the day to plan for. Defaults to today.
+
+        Returns:
+            The planned tasks in priority order (also saved in self.plan).
+        """
         day = on or date.today()
         self.plan = []
         self.skipped = []
