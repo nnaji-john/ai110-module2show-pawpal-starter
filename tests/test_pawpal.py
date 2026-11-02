@@ -431,3 +431,25 @@ def test_priority_and_frequency_are_case_insensitive():
     task = Task("Walk", 30, "High", frequency="Daily")
 
     assert (task.priority, task.frequency) == ("high", "daily")
+
+
+def test_reschedule_changes_time_and_clears_conflict():
+    owner, mochi, luna = make_owner()
+    mochi.add_task(Task("Walk", 30, "high", time="07:30"))
+    meds = Task("Meds", 5, "high", time="07:45")
+    luna.add_task(meds)
+    scheduler = Scheduler(owner)
+    assert len(scheduler.detect_conflicts(owner.get_all_tasks())) == 1
+
+    meds.reschedule("8:00")
+
+    assert meds.time == "08:00"
+    assert scheduler.detect_conflicts(owner.get_all_tasks()) == []
+
+
+def test_reschedule_rejects_invalid_time_and_keeps_old_one():
+    walk = Task("Walk", 30, "high", time="07:30")
+
+    with pytest.raises(ValueError):
+        walk.reschedule("25:00")
+    assert walk.time == "07:30"

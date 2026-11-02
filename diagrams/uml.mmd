@@ -29,6 +29,7 @@ classDiagram
         +bool completed
         +date due_date
         +priority_value() int
+        +reschedule(time: str) None
         +start_minutes() int
         +mark_complete(on: date) Task
     }
@@ -42,6 +43,7 @@ classDiagram
         +sort_by_time(tasks: list~Task~) list~Task~
         +filter_tasks(pet_name: str, completed: bool) list~Task~
         +mark_task_complete(task: Task, on: date) Task
+        +find_conflicts(tasks: list~Task~) list~tuple~
         +detect_conflicts(tasks: list~Task~) list~str~
         +generate_plan(on: date) list~Task~
         +explain_plan() str

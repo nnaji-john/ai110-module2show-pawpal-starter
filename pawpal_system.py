@@ -16,6 +16,20 @@ def time_to_minutes(time: str) -> int | None:
     return parsed.hour * 60 + parsed.minute
 
 
+def normalize_time(time: str) -> str:
+    """Return a time as zero-padded "HH:MM" ("7:30" -> "07:30"), or "" if blank.
+
+    Raises:
+        ValueError: if the time isn't a valid 24-hour HH:MM time.
+    """
+    time = time.strip()
+    try:
+        minutes = time_to_minutes(time)
+    except ValueError:
+        raise ValueError(f"Invalid time {time!r}; use HH:MM, for example 08:00") from None
+    return "" if minutes is None else f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
 @dataclass
 class Task:
     """A single pet care task (walk, feeding, meds, etc.)."""
@@ -43,17 +57,15 @@ class Task:
             )
         if self.duration_minutes <= 0:
             raise ValueError("duration_minutes must be positive")
-        self.time = self.time.strip()
-        try:
-            minutes = time_to_minutes(self.time)
-        except ValueError:
-            raise ValueError(f"Invalid time {self.time!r}; use HH:MM, for example 08:00") from None
-        if minutes is not None:
-            self.time = f"{minutes // 60:02d}:{minutes % 60:02d}"
+        self.time = normalize_time(self.time)
 
     def priority_value(self) -> int:
         """Return a numeric rank for this task's priority (higher = more important)."""
         return PRIORITY_RANK[self.priority]
+
+    def reschedule(self, time: str) -> None:
+        """Change the preferred time ("" for any time), with the same checks as on creation."""
+        self.time = normalize_time(time)
 
     def start_minutes(self) -> int | None:
         """Return the preferred start as minutes after midnight, or None if untimed."""
@@ -206,22 +218,21 @@ class Scheduler:
             pet.add_task(next_task)
         return next_task
 
-    def detect_conflicts(self, tasks: list[Task]) -> list[str]:
-        """Return a warning for every pair of timed tasks whose times overlap.
+    def find_conflicts(self, tasks: list[Task]) -> list[tuple[Task, Task]]:
+        """Return every pair of timed tasks whose times overlap.
 
         Two tasks clash if the later one starts before the earlier one ends, so
         this catches tasks at the same time (for the same pet or different pets)
         and partial overlaps. Tasks that only touch, like 07:30 to 08:00 and then
-        08:00, don't clash. Untimed tasks are ignored. This never raises; the
-        caller decides what to do with the warnings.
+        08:00, don't clash. Untimed tasks are ignored.
 
         Args:
             tasks: the tasks to check, from any number of pets.
 
         Returns:
-            One readable warning message per clashing pair, or an empty list.
+            (earlier, later) pairs in time order, or an empty list.
         """
-        warnings = []
+        pairs = []
         # Untimed tasks can happen whenever, so only timed tasks can clash.
         timed = self.sort_by_time([t for t in tasks if t.time])
         # Check every pair. A day has few tasks, so this is fast enough and easy to follow.
@@ -230,12 +241,28 @@ class Scheduler:
             first_end = first.start_minutes() + first.duration_minutes
             # Touching (second starts exactly when first ends) is not a conflict.
             if second.start_minutes() < first_end:
-                clash = "is at the same time as" if second.time == first.time else "overlaps"
-                warnings.append(
-                    f"{second.description} for {second.pet_name} at {second.time} {clash} "
-                    f"{first.description} for {first.pet_name} "
-                    f"({first.time}, {first.duration_minutes} min)."
-                )
+                pairs.append((first, second))
+        return pairs
+
+    def detect_conflicts(self, tasks: list[Task]) -> list[str]:
+        """Return a readable warning for every pair of overlapping timed tasks.
+
+        This never raises; the caller decides what to do with the warnings.
+
+        Args:
+            tasks: the tasks to check, from any number of pets.
+
+        Returns:
+            One warning message per clashing pair (see find_conflicts), or an empty list.
+        """
+        warnings = []
+        for first, second in self.find_conflicts(tasks):
+            clash = "is at the same time as" if second.time == first.time else "overlaps"
+            warnings.append(
+                f"{second.description} for {second.pet_name} at {second.time} {clash} "
+                f"{first.description} for {first.pet_name} "
+                f"({first.time}, {first.duration_minutes} min)."
+            )
         return warnings
 
     def generate_plan(self, on: date | None = None) -> list[Task]:

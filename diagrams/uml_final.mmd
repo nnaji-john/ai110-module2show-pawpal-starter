@@ -1,0 +1,72 @@
+classDiagram
+    %% PawPal+ final design. Matches pawpal_system.py.
+
+    class Owner {
+        <<dataclass>>
+        +str name
+        +int available_minutes
+        +list~str~ preferences
+        +list~Pet~ pets
+        +add_pet(pet: Pet) None
+        +get_all_tasks() list~Task~
+    }
+
+    class Pet {
+        <<dataclass>>
+        +str name
+        +str species
+        +list~Task~ tasks
+        +add_task(task: Task) None
+        +remove_task(description: str) bool
+        +complete_task(description: str, on: date) Task
+    }
+
+    class Task {
+        <<dataclass>>
+        +str description
+        +int duration_minutes
+        +str priority
+        +str time
+        +str frequency
+        +str pet_name
+        +bool completed
+        +date due_date
+        +priority_value() int
+        +reschedule(time: str) None
+        +start_minutes() int
+        +mark_complete(on: date) Task
+    }
+
+    class Scheduler {
+        +Owner owner
+        +list~Task~ plan
+        +list~Task~ skipped
+        +list~str~ conflicts
+        +sort_by_priority(tasks: list~Task~) list~Task~
+        +sort_by_time(tasks: list~Task~) list~Task~
+        +filter_tasks(pet_name: str, completed: bool) list~Task~
+        +mark_task_complete(task: Task, on: date) Task
+        +find_conflicts(tasks: list~Task~) list~tuple~
+        +detect_conflicts(tasks: list~Task~) list~str~
+        +generate_plan(on: date) list~Task~
+        +explain_plan() str
+    }
+
+    class pawpal_system {
+        <<module>>
+        +dict PRIORITY_RANK
+        +dict REPEAT_DAYS
+        +time_to_minutes(time: str) int
+        +normalize_time(time: str) str
+    }
+
+    Owner "1" *-- "0..*" Pet : owns
+    Pet "1" *-- "0..*" Task : owns
+    Scheduler "1" --> "1" Owner : plans for
+    Scheduler ..> Task : sorts, filters, plans, checks conflicts
+    Scheduler ..> Pet : adds next occurrence to
+    Task ..> Task : creates next occurrence
+    Task ..> pawpal_system : validates with
+
+    note for Scheduler "Reads every pet's tasks through Owner.get_all_tasks(), never from a single pet.\nConflicts are warnings only: both tasks stay in the plan."
+    note for Task "mark_complete() returns the next occurrence (daily +1 day, weekly +7 days)\nor None for a 'once' task. start_minutes() returns None if there is no time."
