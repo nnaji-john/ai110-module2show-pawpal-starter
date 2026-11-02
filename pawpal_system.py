@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, field
 
+PRIORITY_RANK = {"low": 1, "medium": 2, "high": 3}
+
 
 @dataclass
 class Task:
@@ -9,7 +11,8 @@ class Task:
 
     title: str
     duration_minutes: int
-    priority: str  # "low", "medium", or "high"
+    priority: str  # a key of PRIORITY_RANK
+    pet_name: str = ""  # set by Pet.add_task
     completed: bool = False
 
     def priority_value(self) -> int:
@@ -30,7 +33,7 @@ class Pet:
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
-        """Add a care task for this pet."""
+        """Add a care task for this pet and tag it with this pet's name."""
         pass
 
     def remove_task(self, title: str) -> None:
