@@ -14,7 +14,7 @@ Based on the PawPal+ scenario, a busy pet owner should be able to perform three 
 
 My initial UML design uses four classes. An Owner has zero or more Pets, each Pet has zero or more Tasks, and a Scheduler plans for one Owner by working with that owner's tasks. I deliberately kept the design small, covering only what the three core actions need.
 
-- **Task** (dataclass) represents one care activity, such as a walk or a feeding. It stores a title, a duration in minutes, a priority (low, medium, or high), and whether it is completed. It can convert its priority to a number for sorting and can mark itself complete.
+- **Task** (dataclass) represents one care activity, such as a walk or a feeding. It stores a description, a duration in minutes, a priority (low, medium, or high), an optional preferred time, how often it repeats, and whether it is completed. It can convert its priority to a number for sorting and can mark itself complete.
 - **Pet** (dataclass) stores a pet's name and species and owns that pet's list of tasks. It is responsible for adding and removing tasks.
 - **Owner** (dataclass) stores the owner's name, how many minutes they have for pet care each day, their preferences, and their pets. It is responsible for adding pets and for gathering every task across all pets, so other classes don't need to dig through each pet.
 - **Scheduler** holds the logic. Given an Owner, it sorts tasks by priority, builds a daily plan that fits within the owner's available time, keeps track of which tasks it skipped, and explains why each task was scheduled or left out.
@@ -48,13 +48,19 @@ The review also flagged things to handle during implementation rather than in th
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+I used Claude Code in VS Code at every stage so far. It helped me turn the README scenario into three core user actions, drafted a Mermaid UML diagram for my four classes, generated the dataclass skeletons in `pawpal_system.py`, reviewed the skeleton for missing relationships, filled in the method logic, wrote `main.py`, and drafted my first two pytest tests.
+
+The most helpful prompts were specific review questions rather than open-ended "build it" requests. Asking it to review the UML for unnecessary complexity, and to check the skeleton for missing relationships and logic bottlenecks, surfaced real problems: tasks didn't know which pet they belonged to, and priority was free text with no single ranking rule. Giving it the exact class responsibilities from the assignment (for example, that the Scheduler must read tasks through `Owner.get_all_tasks()`) also kept its code aligned with what I needed.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+I didn't accept the first UML draft as-is. It included extras like a pet's age, a task category, `remove_pet()`, `get_pet()`, and an `edit_task()` method with an awkward signature. None of these were needed for the three core actions, so I cut them and kept only what the scheduler actually uses. I also left some suggestions for later instead of building them now: owner preferences are stored but not yet used, `frequency` is stored but daily and weekly tasks are scheduled the same way, and the plan orders tasks rather than assigning real start times or checking for time conflicts.
+
+To verify the results, I:
+
+- ran a two-pet example to check that completed tasks were left out, that generating a plan twice didn't duplicate tasks, and that a priority typed as "High" still worked;
+- ran `python main.py` and checked the schedule by hand: the four tasks that fit use 65 of 90 minutes, and the 45-minute low-priority grooming is correctly skipped because only 25 minutes were left;
+- ran `python -m pytest` to confirm that `mark_complete()` changes a task's status and that `add_task()` increases a pet's task count.
 
 ---
 

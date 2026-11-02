@@ -15,13 +15,15 @@ classDiagram
         +str species
         +list~Task~ tasks
         +add_task(task: Task) None
-        +remove_task(title: str) None
+        +remove_task(description: str) bool
     }
 
     class Task {
-        +str title
+        +str description
         +int duration_minutes
         +str priority
+        +str time
+        +str frequency
         +str pet_name
         +bool completed
         +priority_value() int
